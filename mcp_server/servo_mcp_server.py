@@ -255,16 +255,19 @@ def _check_safe_range(servo: int, angle: float) -> None:
 def move_to_xyz(x: float, y: float, z: float) -> str:
     """Move the claw to a target position using inverse kinematics.
 
+    PRELIMINARY - needs calibration on your specific arm before trusting it
+    for precise moves. Direction (up/down/left/right/forward/back) has been
+    verified against the physical arm for the base and shoulder/elbow axes,
+    but absolute position accuracy in mm has NOT: L1/L2/L3 are still the
+    official MeArm v3.0 defaults (80/80/22mm), not measured on this specific
+    arm, and no ruler cross-check has been done. Expect right-direction,
+    imprecise-distance behavior until that's done - see the README's
+    "Inverse kinematics" section.
+
     Coordinate frame: origin is directly above the base rotation axis, at
     shoulder height. y = forward (mm), x = sideways (mm, sign/direction not
-    yet verified against the physical arm), z = up from shoulder height (mm).
-    Uses MeArm v3.0 default geometry (L1=L2=80mm, L3=22mm) - see ik.py.
-
-    NOTE: the mapping from solved joint angles to this arm's S2/S3/S4
-    servo commands uses reasoned-but-unverified calibration constants
-    (see the module-level comment above this function in
-    servo_mcp_server.py). Treat results with suspicion until cross-checked
-    against get_status() / a visual check, especially for shoulder/elbow.
+    yet verified through this function specifically - only via direct
+    set_servo), z = up from shoulder height (mm).
     """
     angles = ik.solve(x, y, z)
     if angles is None:

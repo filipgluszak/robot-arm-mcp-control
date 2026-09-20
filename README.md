@@ -122,6 +122,14 @@ The Arduino auto-detects on `/dev/cu.usbmodem*`, `/dev/cu.usbserial*`, or
 
 ## Inverse kinematics
 
+> **⚠️ Preliminary — needs calibration on your specific arm before trusting
+> it for precise moves.** Direction (up/down/left/right/forward/back) is
+> verified against the physical arm, but absolute position accuracy in mm
+> is not: `L1`/`L2`/`L3` are still the official MeArm v3.0 defaults, not
+> measured on this specific arm, and no ruler cross-check has been done.
+> See "Calibration status" below before relying on `move_to_xyz` for
+> anything that needs to land at an exact point.
+
 `mcp_server/ik.py` is a Python port of the official
 [MeArm-Arduino](https://github.com/MeArm/MeArm-Arduino) solver — this arm's
 physical design (and most AliExpress clones of it) is the open-source MeArm,
