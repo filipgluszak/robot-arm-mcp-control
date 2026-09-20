@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "robot-arm": {
+      "command": "/absolute/path/to/robot-arm-mcp-control/mcp_server/.venv/bin/python3",
+      "args": ["/absolute/path/to/robot-arm-mcp-control/mcp_server/servo_mcp_server.py"]
+    }
+  }
+}
