@@ -140,20 +140,32 @@ design.
 
 - **Base**: direction confirmed — `S4=90` is straight-ahead (`a0=0`), and
   ±40mm sideways gave a clean symmetric ±18.4° split around center.
-- **Shoulder/elbow**: direction confirmed via a live before/after photo
-  comparison — commanding a lower `z` (target `(0,90,-40)` vs `(0,90,-10)`)
-  visibly lowered both the elbow joint and the claw end. `ELBOW_ZERO` was
-  revised from an initial guess of 90 to 180 after the first guess put
-  computed angles ~30-45° outside the safe range for ordinary forward-reach
-  targets — if you see a similar pattern (a joint's computed angle is
-  consistently and substantially out of range rather than borderline),
-  suspect the `ZERO` constant before suspecting the target point.
+- **Shoulder (S3) / elbow (S2)**: both servos are base-mounted, per this
+  arm's actual construction — S3 directly drives the main upper-arm bar,
+  and S2 drives a second parallel "control" bar that sets the forearm's
+  *absolute* angle via the parallelogram linkage (S3 on the right side of
+  the arm, S2 on the left, viewed from behind). `ELBOW_ZERO`/`SIGN` took
+  three attempts to get right — worth reading if you hit a similar wall:
+  1. `ZERO=90, SIGN=-1` — untested initial guess.
+  2. `ZERO=180, SIGN=+1` — revised to fit the safe servo range for a couple
+     of IK targets, and *appeared* confirmed by a combined S3+S2
+     before/after photo test. It wasn't actually confirmed — that test
+     moved both joints at once, so a wrong elbow model could still produce
+     a plausible-looking result if the shoulder's (correct) contribution
+     dominated what the photo showed.
+  3. `ZERO=90, SIGN=+1` (current) — found by isolating each joint: moving
+     S2 *alone* moved the claw straight up with almost no reach change;
+     moving S3 *alone* (S2 held fixed) moved it up and back. Both match
+     this constant's predictions quantitatively, not just directionally.
+  **Lesson**: a multi-joint test can look right with a wrong per-joint
+  model, because errors can partly cancel for that one test. Isolate one
+  joint at a time (hold the others fixed) when calibrating a multi-DOF arm.
 - **Not yet verified**: absolute position accuracy in mm (no ruler
-  cross-check done — direction is right, distance is unconfirmed), and the
-  `x` (sideways) sign specifically through `move_to_xyz`'s solver path
-  (only the base servo's direction was tested directly). `L1`/`L2`/`L3`
-  are still the official MeArm v3.0 defaults (80/80/22mm), not measured on
-  this specific arm.
+  cross-check done — direction and relative magnitude check out, absolute
+  mm are still whatever `L1`/`L2`/`L3` says), and the `x` (sideways) sign
+  specifically through `move_to_xyz`'s solver path (only the base servo's
+  direction was tested directly, via `set_servo`). `L1`/`L2`/`L3` are still
+  the official MeArm v3.0 defaults (80/80/22mm), not measured on this arm.
 
 To finish calibrating:
 

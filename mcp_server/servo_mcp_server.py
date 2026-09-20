@@ -181,29 +181,42 @@ def raw_command(command: str) -> str:
 # angleToMicros() mapping, a direct linear degree scale - that part is not
 # a guess.
 #
-# Calibration status (as of 2026-09-20, live before/after photo comparison
-# on the physical arm):
+# Calibration status (as of 2026-09-20):
 #   - BASE: direction confirmed (S4=90 is straight-ahead / a0=0; +/-40mm
 #     sideways gave a clean symmetric +/-18.4 deg split around center).
-#   - SHOULDER/ELBOW: direction confirmed - commanding a lower z (target
-#     (0,90,-40) vs (0,90,-10)) visibly lowered both the elbow joint and
-#     the claw end in a clean before/after photo comparison. ELBOW_ZERO
-#     was revised from an initial 90 to 180 after the first guess put
-#     computed angles ~30-45deg outside the safe range for ordinary
-#     forward-reach targets.
+#   - SHOULDER (S3) and ELBOW (S2): both servos are base-mounted (per this
+#     arm's actual MeArm-style construction: S3 drives the main upper-arm
+#     bar directly, S2 drives a second parallel "control" bar that sets the
+#     forearm's ABSOLUTE angle via the parallelogram linkage - S3 sits on
+#     the right side of the arm and S2 on the left, viewed from behind).
+#     ELBOW_ZERO went through two wrong guesses before landing here:
+#       1) ZERO=90, SIGN=-1 (initial untested guess)
+#       2) ZERO=180, SIGN=+1 (revised to fit the safe servo range for a
+#          couple of forward-reach IK targets - looked right in one
+#          combined S3+S2 photo test, but that test couldn't actually
+#          distinguish the two hypotheses since both joints moved together)
+#       3) ZERO=90, SIGN=+1 (this one) - found by isolating each joint:
+#          moving S2 ALONE (76->110) moved the claw straight UP with
+#          almost no reach change, and moving S3 ALONE (90->50, S2 fixed)
+#          moved it up AND back. Both match this constant's predictions
+#          quantitatively (not just directionally) via ik.forward() - see
+#          git history for the worked numbers.
 #   - NOT yet verified: absolute position accuracy in mm (no ruler
-#     cross-check done), and the X (sideways) sign for move_to_xyz's IK
-#     solve specifically (only tested via direct set_servo, not through
-#     the solver's x/y/z front door). L1/L2/L3 are still the official
-#     MeArm v3.0 defaults, not measured on this specific arm.
-# If a target position is visibly off once you can measure it, re-check
-# L1/L2/L3 in ik.py first (a wrong link length causes exactly this kind of
-# right-direction-wrong-distance error), then these ZERO constants.
+#     cross-check done - direction and relative magnitude look right,
+#     absolute mm are still whatever L1/L2/L3 says), and the X (sideways)
+#     sign specifically through move_to_xyz's solver path (base direction
+#     was only tested via direct set_servo). L1/L2/L3 are still the
+#     official MeArm v3.0 defaults, not measured on this specific arm.
+#
+# Lesson learned: a combined multi-joint test can pass "looks about right"
+# even with a wrong per-joint model, because the joints' errors can partly
+# cancel or align by coincidence for that one test. Isolate one joint at a
+# time (hold the others fixed) when calibrating.
 # ---------------------------------------------------------------------------
 
 BASE_ZERO, BASE_SIGN = 90.0, 1.0
 SHOULDER_ZERO, SHOULDER_SIGN = 90.0, -1.0
-ELBOW_ZERO, ELBOW_SIGN = 180.0, 1.0
+ELBOW_ZERO, ELBOW_SIGN = 90.0, 1.0
 
 # Safe ranges for this specific arm (narrower than the servo's raw 0-180) -
 # see project notes: S4 rotation 30-160, S3 height 20-90, S2 reach 70-120.
