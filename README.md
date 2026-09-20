@@ -111,10 +111,50 @@ Tools exposed:
 | `get_status()` | Angle + pulse width (µs) for all 4 servos, playback state |
 | `wait_seconds(seconds)` | Pause up to 30s, for pacing a move sequence |
 | `raw_command(command)` | Escape hatch — send any raw string to the firmware |
+| `move_to_xyz(x, y, z)` | Move the claw to a target position via inverse kinematics (see below) |
+| `get_xyz_estimate()` | Estimate current claw position from current servo readout (forward kinematics) |
 
 The Arduino auto-detects on `/dev/cu.usbmodem*`, `/dev/cu.usbserial*`, or
 `/dev/cu.wchusbserial*` (macOS/Linux naming). Adjust `_find_port()` in
 `servo_mcp_server.py` if your board enumerates differently.
+
+## Inverse kinematics
+
+`mcp_server/ik.py` is a Python port of the official
+[MeArm-Arduino](https://github.com/MeArm/MeArm-Arduino) solver — this arm's
+physical design (and most AliExpress clones of it) is the open-source MeArm,
+a 4-bar parallelogram arm. `solve(x, y, z)` returns the three joint angles
+(base, shoulder, elbow) needed to reach a point, in a coordinate frame with
+the origin directly above the base rotation axis, at shoulder height (`y`
+forward, `x` sideways, `z` up), using the official v3.0 link lengths
+(`L1=L2=80mm`, `L3=22mm`). Verified self-consistent via forward/inverse
+round-trip tests.
+
+**Calibration status**: `move_to_xyz` converts the solver's joint angles
+(radians) into this arm's `S2`(elbow)/`S3`(shoulder)/`S4`(base) servo
+commands using per-axis `ZERO`/`SIGN` constants at the top of the IK section
+in `servo_mcp_server.py`. The *scale* (degrees per radian) is not a guess —
+each SG90's 0-180° command range is linearly 1:1 with physical degrees by
+design. The *base* zero point is fairly solid (`S4=90` is confirmed to be
+straight-ahead, i.e. `a0=0`). The *shoulder* and *elbow* zero/sign are
+reasoned defaults, not yet verified against a physical arm — `move_to_xyz`
+does reject any solved angle outside this arm's known-safe per-servo range
+rather than blindly sending it, but a target inside that range could still
+land at the wrong physical spot until calibrated. To verify/calibrate:
+
+1. Call `move_to_xyz` for a couple of distinct, unambiguous target points
+   (e.g. straight up-and-close vs. far-and-low).
+2. Compare the arm's actual pose against what you'd expect, or use
+   `get_xyz_estimate()` and see if it roughly matches where the claw
+   visibly is.
+3. If a joint moves the wrong direction, flip that axis's `SIGN` constant.
+   If it's moving the right direction but consistently offset, adjust that
+   axis's `ZERO` constant.
+4. Re-measure `L1`/`L2`/`L3` with a ruler (shoulder-pivot to elbow-pivot,
+   elbow-pivot to wrist-pivot, etc. — see `Geometry.md` in the MeArm repo for
+   exactly which points to measure between) if positions are close but
+   consistently off by a scale factor, and update the constants at the top
+   of `ik.py`.
 
 ## Notes from actually using it
 

@@ -7,6 +7,8 @@ servo.py, it does NOT reset the Arduino (and lose servo positions) between
 calls.
 """
 import glob
+import math
+import re
 import sys
 import threading
 import time
@@ -14,6 +16,8 @@ from typing import Optional
 
 import serial
 from mcp.server.mcpserver import MCPServer
+
+import ik
 
 mcp = MCPServer("robot-arm")
 
@@ -161,6 +165,115 @@ def raw_command(command: str) -> str:
     """Send a raw command string directly to the controller (escape hatch for
     anything not covered by the other tools, e.g. future firmware commands)."""
     return _send(command)
+
+
+# ---------------------------------------------------------------------------
+# Inverse kinematics (MeArm geometry - see ik.py)
+#
+# Joint-to-servo mapping for THIS arm's channel assignment:
+#   S4 = base   (a0)      S3 = shoulder (a1)      S2 = elbow (a2)
+#   S1 = claw, not part of the position IK.
+#
+# Calibration: servo_deg = ZERO + SIGN * degrees(joint_angle_rad)
+#
+# SCALE is fixed at 1 deg-per-deg (not a free parameter): each SG90's 0-180
+# command range is, by the servo's own design and the firmware's linear
+# angleToMicros() mapping, a direct linear degree scale - that part is not
+# a guess.
+#
+# ZERO and SIGN below are NOT verified against the physical arm - they are
+# reasoned defaults (BASE is fairly safe since S4=90 is confirmed "center"
+# i.e. a0=0; SHOULDER and ELBOW signs/zeros are best-effort guesses from
+# this arm's documented S2/S3 behavior). Verify with a couple of live
+# move_to_xyz() calls plus get_status() / a visual check before trusting
+# this for anything precise, and adjust the constants below if a servo
+# moves the wrong direction or the range feels offset.
+# ---------------------------------------------------------------------------
+
+BASE_ZERO, BASE_SIGN = 90.0, 1.0
+SHOULDER_ZERO, SHOULDER_SIGN = 90.0, -1.0
+ELBOW_ZERO, ELBOW_SIGN = 90.0, -1.0
+
+# Safe ranges for this specific arm (narrower than the servo's raw 0-180) -
+# see project notes: S4 rotation 30-160, S3 height 20-90, S2 reach 70-120.
+SAFE_RANGE = {4: (30, 160), 3: (20, 90), 2: (70, 120)}
+
+
+def _rad_to_servo_deg(rad: float, zero: float, sign: float) -> float:
+    return zero + sign * math.degrees(rad)
+
+
+def _servo_deg_to_rad(deg: float, zero: float, sign: float) -> float:
+    return math.radians((deg - zero) / sign)
+
+
+def _check_safe_range(servo: int, angle: float) -> None:
+    lo, hi = SAFE_RANGE[servo]
+    if not (lo <= angle <= hi):
+        raise ValueError(
+            f"Computed S{servo} angle {angle:.1f} deg is outside this arm's "
+            f"safe range ({lo}-{hi}). Target point is likely unreachable or "
+            f"the IK calibration (ZERO/SIGN constants) needs adjusting."
+        )
+
+
+@mcp.tool()
+def move_to_xyz(x: float, y: float, z: float) -> str:
+    """Move the claw to a target position using inverse kinematics.
+
+    Coordinate frame: origin is directly above the base rotation axis, at
+    shoulder height. y = forward (mm), x = sideways (mm, sign/direction not
+    yet verified against the physical arm), z = up from shoulder height (mm).
+    Uses MeArm v3.0 default geometry (L1=L2=80mm, L3=22mm) - see ik.py.
+
+    NOTE: the mapping from solved joint angles to this arm's S2/S3/S4
+    servo commands uses reasoned-but-unverified calibration constants
+    (see the module-level comment above this function in
+    servo_mcp_server.py). Treat results with suspicion until cross-checked
+    against get_status() / a visual check, especially for shoulder/elbow.
+    """
+    angles = ik.solve(x, y, z)
+    if angles is None:
+        raise ValueError(f"({x}, {y}, {z}) is not reachable by this arm's geometry")
+
+    s4 = _rad_to_servo_deg(angles.base, BASE_ZERO, BASE_SIGN)
+    s3 = _rad_to_servo_deg(angles.shoulder, SHOULDER_ZERO, SHOULDER_SIGN)
+    s2 = _rad_to_servo_deg(angles.elbow, ELBOW_ZERO, ELBOW_SIGN)
+
+    _check_safe_range(4, s4)
+    _check_safe_range(3, s3)
+    _check_safe_range(2, s2)
+
+    results = [
+        _send(f"S4 {round(s4)}"),
+        _send(f"S3 {round(s3)}"),
+        _send(f"S2 {round(s2)}"),
+    ]
+    return (f"-> S4={round(s4)} S3={round(s3)} S2={round(s2)}  "
+            f"(solved base={math.degrees(angles.base):.1f} "
+            f"shoulder={math.degrees(angles.shoulder):.1f} "
+            f"elbow={math.degrees(angles.elbow):.1f} deg)")
+
+
+@mcp.tool()
+def get_xyz_estimate() -> str:
+    """Estimate the current claw position (x, y, z mm) from the current S2/S3/S4
+    readout, using forward kinematics and the same calibration as move_to_xyz.
+    Subject to the same unverified-calibration caveat."""
+    status = _send("?")
+    found = {int(m.group(1)): float(m.group(2))
+             for m in re.finditer(r"S(\d): (-?\d+) deg", status)}
+    for s in (2, 3, 4):
+        if s not in found:
+            raise RuntimeError(f"Could not parse S{s} from status: {status!r}")
+
+    angles = ik.JointAngles(
+        base=_servo_deg_to_rad(found[4], BASE_ZERO, BASE_SIGN),
+        shoulder=_servo_deg_to_rad(found[3], SHOULDER_ZERO, SHOULDER_SIGN),
+        elbow=_servo_deg_to_rad(found[2], ELBOW_ZERO, ELBOW_SIGN),
+    )
+    x, y, z = ik.forward(angles)
+    return f"x={x:.1f} y={y:.1f} z={z:.1f} mm (from S4={found[4]:.0f} S3={found[3]:.0f} S2={found[2]:.0f})"
 
 
 if __name__ == "__main__":
