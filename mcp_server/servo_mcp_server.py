@@ -181,18 +181,29 @@ def raw_command(command: str) -> str:
 # angleToMicros() mapping, a direct linear degree scale - that part is not
 # a guess.
 #
-# ZERO and SIGN below are NOT verified against the physical arm - they are
-# reasoned defaults (BASE is fairly safe since S4=90 is confirmed "center"
-# i.e. a0=0; SHOULDER and ELBOW signs/zeros are best-effort guesses from
-# this arm's documented S2/S3 behavior). Verify with a couple of live
-# move_to_xyz() calls plus get_status() / a visual check before trusting
-# this for anything precise, and adjust the constants below if a servo
-# moves the wrong direction or the range feels offset.
+# Calibration status (as of 2026-09-20, live before/after photo comparison
+# on the physical arm):
+#   - BASE: direction confirmed (S4=90 is straight-ahead / a0=0; +/-40mm
+#     sideways gave a clean symmetric +/-18.4 deg split around center).
+#   - SHOULDER/ELBOW: direction confirmed - commanding a lower z (target
+#     (0,90,-40) vs (0,90,-10)) visibly lowered both the elbow joint and
+#     the claw end in a clean before/after photo comparison. ELBOW_ZERO
+#     was revised from an initial 90 to 180 after the first guess put
+#     computed angles ~30-45deg outside the safe range for ordinary
+#     forward-reach targets.
+#   - NOT yet verified: absolute position accuracy in mm (no ruler
+#     cross-check done), and the X (sideways) sign for move_to_xyz's IK
+#     solve specifically (only tested via direct set_servo, not through
+#     the solver's x/y/z front door). L1/L2/L3 are still the official
+#     MeArm v3.0 defaults, not measured on this specific arm.
+# If a target position is visibly off once you can measure it, re-check
+# L1/L2/L3 in ik.py first (a wrong link length causes exactly this kind of
+# right-direction-wrong-distance error), then these ZERO constants.
 # ---------------------------------------------------------------------------
 
 BASE_ZERO, BASE_SIGN = 90.0, 1.0
 SHOULDER_ZERO, SHOULDER_SIGN = 90.0, -1.0
-ELBOW_ZERO, ELBOW_SIGN = 90.0, -1.0
+ELBOW_ZERO, ELBOW_SIGN = 180.0, 1.0
 
 # Safe ranges for this specific arm (narrower than the servo's raw 0-180) -
 # see project notes: S4 rotation 30-160, S3 height 20-90, S2 reach 70-120.

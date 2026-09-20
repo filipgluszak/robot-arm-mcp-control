@@ -130,31 +130,45 @@ forward, `x` sideways, `z` up), using the official v3.0 link lengths
 (`L1=L2=80mm`, `L3=22mm`). Verified self-consistent via forward/inverse
 round-trip tests.
 
-**Calibration status**: `move_to_xyz` converts the solver's joint angles
-(radians) into this arm's `S2`(elbow)/`S3`(shoulder)/`S4`(base) servo
-commands using per-axis `ZERO`/`SIGN` constants at the top of the IK section
-in `servo_mcp_server.py`. The *scale* (degrees per radian) is not a guess —
+**Calibration status** (last verified 2026-09-20 against the physical arm):
+`move_to_xyz` converts the solver's joint angles (radians) into this arm's
+`S2`(elbow)/`S3`(shoulder)/`S4`(base) servo commands using per-axis
+`ZERO`/`SIGN` constants at the top of the IK section in
+`servo_mcp_server.py`. The *scale* (degrees per radian) is not a guess —
 each SG90's 0-180° command range is linearly 1:1 with physical degrees by
-design. The *base* zero point is fairly solid (`S4=90` is confirmed to be
-straight-ahead, i.e. `a0=0`). The *shoulder* and *elbow* zero/sign are
-reasoned defaults, not yet verified against a physical arm — `move_to_xyz`
-does reject any solved angle outside this arm's known-safe per-servo range
-rather than blindly sending it, but a target inside that range could still
-land at the wrong physical spot until calibrated. To verify/calibrate:
+design.
+
+- **Base**: direction confirmed — `S4=90` is straight-ahead (`a0=0`), and
+  ±40mm sideways gave a clean symmetric ±18.4° split around center.
+- **Shoulder/elbow**: direction confirmed via a live before/after photo
+  comparison — commanding a lower `z` (target `(0,90,-40)` vs `(0,90,-10)`)
+  visibly lowered both the elbow joint and the claw end. `ELBOW_ZERO` was
+  revised from an initial guess of 90 to 180 after the first guess put
+  computed angles ~30-45° outside the safe range for ordinary forward-reach
+  targets — if you see a similar pattern (a joint's computed angle is
+  consistently and substantially out of range rather than borderline),
+  suspect the `ZERO` constant before suspecting the target point.
+- **Not yet verified**: absolute position accuracy in mm (no ruler
+  cross-check done — direction is right, distance is unconfirmed), and the
+  `x` (sideways) sign specifically through `move_to_xyz`'s solver path
+  (only the base servo's direction was tested directly). `L1`/`L2`/`L3`
+  are still the official MeArm v3.0 defaults (80/80/22mm), not measured on
+  this specific arm.
+
+To finish calibrating:
 
 1. Call `move_to_xyz` for a couple of distinct, unambiguous target points
-   (e.g. straight up-and-close vs. far-and-low).
-2. Compare the arm's actual pose against what you'd expect, or use
-   `get_xyz_estimate()` and see if it roughly matches where the claw
-   visibly is.
-3. If a joint moves the wrong direction, flip that axis's `SIGN` constant.
+   (e.g. straight up-and-close vs. far-and-low) and photograph or watch
+   each pose after it fully settles — comparing motion blur mid-move gives
+   misleading results.
+2. If a joint moves the wrong direction, flip that axis's `SIGN` constant.
    If it's moving the right direction but consistently offset, adjust that
-   axis's `ZERO` constant.
-4. Re-measure `L1`/`L2`/`L3` with a ruler (shoulder-pivot to elbow-pivot,
+   axis's `ZERO` constant — see the 2026-09-20 note above for what a wrong
+   `ZERO` typically looks like (angles landing far outside the safe range).
+3. Re-measure `L1`/`L2`/`L3` with a ruler (shoulder-pivot to elbow-pivot,
    elbow-pivot to wrist-pivot, etc. — see `Geometry.md` in the MeArm repo for
-   exactly which points to measure between) if positions are close but
-   consistently off by a scale factor, and update the constants at the top
-   of `ik.py`.
+   exactly which points to measure between) once direction is confirmed but
+   absolute distance is off, and update the constants at the top of `ik.py`.
 
 ## Notes from actually using it
 
