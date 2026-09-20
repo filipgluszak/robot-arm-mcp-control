@@ -108,8 +108,18 @@ def set_all_power(on: bool) -> str:
 
 @mcp.tool()
 def record_step() -> str:
-    """Record the current pose as the next step of the onboard sequence (max 5 steps)."""
+    """Record the current pose as the next step of the onboard sequence (max 99
+    steps). For any multi-point path (drawing a shape, a repeating move), prefer
+    this + play_sequence() over manually stepping through set_servo calls - the
+    Arduino runs the whole sequence and loop on its own once started, instead of
+    needing one tool call per waypoint."""
     return _send("REC")
+
+
+@mcp.tool()
+def undo_step() -> str:
+    """Delete the last recorded step of the onboard sequence."""
+    return _send("UNDO")
 
 
 @mcp.tool()

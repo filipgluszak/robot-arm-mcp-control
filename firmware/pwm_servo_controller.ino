@@ -1,12 +1,12 @@
 /*
   PWM controller: 4 SG90 servos, 2.4" ST7789 TFT + EC11 encoder board, Arduino Uno
-  with sequence recording and looped playback.
+  with sequence recording (up to 99 steps) and looped playback.
 
   Local controls:
     K0 short press       -> next servo
     Encoder short press  -> previous servo
     Turn encoder         -> move selected servo (or change speed while playing)
-    Encoder long press   -> record current pose as next step (max 5)
+    Encoder long press   -> record current pose as next step
     K0 long press        -> start / stop playback
 
   Serial Monitor commands (115200 baud, line ending "Newline"):
@@ -15,8 +15,9 @@
     S2 OFF    relax servo 2 / S2 ON re-enable it
     ALL 45    set all servos to 45 deg
     ALL OFF / ALL ON
-    REC       record current pose as next step (max 5)
+    REC       record current pose as next step (max 99)
     LIST      show recorded steps
+    UNDO      delete the last recorded step
     CLEAR     erase the sequence
     PLAY      play the sequence in a loop
     STOP      stop playback
@@ -75,7 +76,8 @@ const int SERVO_MAX_US[NUM_SERVOS] = {2300, 2300, 2300, 2300};
 #define STEPS_PER_DETENT   4  // change to 2 if one click moves twice
 
 // ---- Sequence settings ----
-#define MAX_STEPS      5
+// RAM cost is MAX_STEPS * NUM_SERVOS bytes (99 * 4 = 396 of the Uno's 2048).
+#define MAX_STEPS     99
 #define DWELL_MS     300      // pause at each step before moving on
 #define LONG_PRESS_MS 800
 
@@ -96,7 +98,7 @@ int  currentUs[NUM_SERVOS];                      // pulse actually sent now
 bool enabled[NUM_SERVOS]   = {true, true, true, true};
 uint8_t current = 0;
 
-// Sequence state
+// Sequence state (one byte per servo angle)
 uint8_t seq[MAX_STEPS][NUM_SERVOS];
 uint8_t seqLen = 0;
 bool playing = false;
@@ -160,11 +162,11 @@ int angleToMicros(uint8_t i, int a) {
 
 // ---- Display ----
 void drawStatus() {
-  char buf[28];
+  char buf[32];
   if (playing) {
-    snprintf(buf, sizeof(buf), "PLAY %d/%d  speed %3d%%  ", playStep + 1, seqLen, speedPct);
+    snprintf(buf, sizeof(buf), "PLAY %d/%d sp %d%%    ", playStep + 1, seqLen, speedPct);
   } else {
-    snprintf(buf, sizeof(buf), "Steps %d/%d speed %3d%%  ", seqLen, MAX_STEPS, speedPct);
+    snprintf(buf, sizeof(buf), "Steps %d/%d sp %d%%    ", seqLen, MAX_STEPS, speedPct);
   }
   tft.setTextSize(2);
   tft.setTextColor(playing ? ST77XX_GREEN : ST77XX_CYAN, ST77XX_BLACK);
@@ -264,7 +266,7 @@ void recordStep() {
     return;
   }
   if (seqLen >= MAX_STEPS) {
-    Serial.println(F("Sequence full (5 steps). Use CLEAR to start over."));
+    Serial.println(F("Sequence full (99 steps). Use CLEAR to start over."));
     return;
   }
   for (uint8_t i = 0; i < NUM_SERVOS; i++) seq[seqLen][i] = angles[i];
@@ -273,6 +275,21 @@ void recordStep() {
   Serial.print(F("Step "));
   Serial.print(seqLen);
   Serial.println(F(" recorded"));
+}
+
+void undoStep() {
+  if (playing) {
+    Serial.println(F("Stop playback first"));
+    return;
+  }
+  if (seqLen == 0) {
+    Serial.println(F("Nothing to undo"));
+    return;
+  }
+  seqLen--;
+  drawStatus();
+  Serial.print(F("Removed step "));
+  Serial.println(seqLen + 1);
 }
 
 void clearSequence() {
@@ -331,8 +348,9 @@ void printHelp() {
   Serial.println(F("  S2 OFF    relax servo 2 / S2 ON re-enable it"));
   Serial.println(F("  ALL 45    set all servos to 45 deg"));
   Serial.println(F("  ALL OFF   relax all / ALL ON re-enable all"));
-  Serial.println(F("  REC       record current pose as next step (max 5)"));
+  Serial.println(F("  REC       record current pose as next step (max 99)"));
   Serial.println(F("  LIST      show recorded steps"));
+  Serial.println(F("  UNDO      delete the last recorded step"));
   Serial.println(F("  CLEAR     erase the sequence"));
   Serial.println(F("  PLAY      play the sequence in a loop"));
   Serial.println(F("  STOP      stop playback"));
@@ -354,7 +372,9 @@ void printStatus() {
   }
   Serial.print(F("Steps: "));
   Serial.print(seqLen);
-  Serial.print(F("/5, speed "));
+  Serial.print('/');
+  Serial.print(MAX_STEPS);
+  Serial.print(F(", speed "));
   Serial.print(speedPct);
   Serial.println(playing ? F("%, PLAYING") : F("%, stopped"));
 }
@@ -390,6 +410,8 @@ void handleCommand(char *cmd) {
     recordStep();
   } else if (strcmp(cmd, "LIST") == 0) {
     printSequence();
+  } else if (strcmp(cmd, "UNDO") == 0) {
+    undoStep();
   } else if (strcmp(cmd, "CLEAR") == 0) {
     clearSequence();
   } else if (strcmp(cmd, "PLAY") == 0) {

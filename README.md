@@ -46,8 +46,9 @@ S3        select servo 3 on the screen
 S2 OFF    relax servo 2 / S2 ON re-enable it
 ALL 45    set all servos to 45 deg
 ALL OFF   relax all / ALL ON re-enable all
-REC       record current pose as next step (max 5)
+REC       record current pose as next step (max 99)
 LIST      show recorded steps
+UNDO      delete the last recorded step
 CLEAR     erase the sequence
 PLAY      play the sequence in a loop
 STOP      stop playback
@@ -102,7 +103,8 @@ Tools exposed:
 | `set_all(angle)` | Move all 4 servos to the same angle |
 | `set_servo_power(servo, on)` | Relax / re-enable a single servo |
 | `set_all_power(on)` | Relax / re-enable all 4 servos |
-| `record_step()` | Record current pose as the next onboard sequence step (max 5) |
+| `record_step()` | Record current pose as the next onboard sequence step (max 99) |
+| `undo_step()` | Delete the last recorded step |
 | `list_steps()` | List recorded sequence steps + playback state |
 | `clear_sequence()` | Erase the recorded sequence |
 | `play_sequence()` | Loop-play the recorded sequence |
@@ -195,3 +197,10 @@ To finish calibrating:
   visibly move is worth checking for current draw at the power supply — a
   climbing/stalled current with no motion usually means a mechanical bind,
   not a wiring or firmware problem.
+- For any multi-point path (tracing a shape, a repeating move), use
+  `record_step()` for each waypoint and `play_sequence()` to run the whole
+  thing, rather than calling `set_servo`/`move_to_xyz` once per waypoint
+  from the MCP client. The firmware supports up to 99 steps and loops
+  playback on its own once started — driving a 10+ point path one tool call
+  at a time is both far slower (one round-trip per waypoint) and pointlessly
+  so, since the Arduino can just run the whole sequence itself.
